@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <title>MD Writer</title>
+  <link rel="stylesheet" href="editor.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="findbar" hidden><input id="find" type="search" placeholder="Find" spellcheck="false"><span id="findinfo"></span></div>
+  <main id="page">
+    <div id="editor"></div>
+    <textarea id="source" spellcheck="false" hidden></textarea>
+  </main>
+  <footer id="status"><span id="mode"></span><span id="count"></span></footer>
+  <script defer src="editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "mdwriter-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/editor.ts --outdir ../Resources/web --minify --target browser --format iife && cp src/index.html src/app.css ../Resources/web/"
+  },
+  "dependencies": {
+    "@milkdown/crepe": "7.22.3",
+    "@milkdown/kit": "7.22.3"
+  }
+}
