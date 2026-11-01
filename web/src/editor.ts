@@ -1,4 +1,5 @@
 import { Crepe } from "@milkdown/crepe";
+import { size } from "@floating-ui/dom";
 import { callCommand } from "@milkdown/kit/utils";
 import { undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
 import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
@@ -71,6 +72,17 @@ async function uploadImage(file: File): Promise<string> {
   });
 }
 
+/** Shrinks the slash menu's item list so the whole menu fits on screen on whichever side it opens. */
+const fitSlashMenu = size({
+  padding: 8,
+  apply({ availableHeight, elements }) {
+    const list = elements.floating.querySelector<HTMLElement>(".menu-groups");
+    if (!list) return;
+    const chrome = elements.floating.offsetHeight - list.offsetHeight;
+    list.style.maxHeight = `${Math.max(120, Math.min(420, availableHeight - chrome))}px`;
+  },
+});
+
 async function mountEditor(markdown: string) {
   await crepe?.destroy();
   editorRoot.innerHTML = "";
@@ -81,6 +93,7 @@ async function mountEditor(markdown: string) {
     featureConfigs: {
       [Crepe.Feature.ImageBlock]: { proxyDomURL: resolveLocal, onUpload: uploadImage },
       [Crepe.Feature.Placeholder]: { text: "Start writing…", mode: "doc" },
+      [Crepe.Feature.BlockEdit]: { slashMenu: { middleware: [fitSlashMenu] } },
     },
   });
   crepe.editor.config((ctx) => {
