@@ -161,6 +161,7 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
     @objc func undoEdit(_ sender: Any?) { call("mdw.undo()") }
     @objc func redoEdit(_ sender: Any?) { call("mdw.redo()") }
     @objc func toggleSourceMode(_ sender: Any?) { call("mdw.toggleSourceMode()") }
+    @objc func setHeading(_ sender: NSMenuItem) { call("mdw.setHeading(level)", ["level": sender.tag]) }
     @objc func showFind(_ sender: Any?) { call("mdw.showFind()") }
     @objc func findNext(_ sender: Any?) { call("mdw.findNext()") }
     @objc func findPrevious(_ sender: Any?) { call("mdw.findPrevious()") }

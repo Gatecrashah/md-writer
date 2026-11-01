@@ -2,6 +2,7 @@ import { Crepe } from "@milkdown/crepe";
 import { size } from "@floating-ui/dom";
 import { callCommand } from "@milkdown/kit/utils";
 import { undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
+import { wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
 import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
 import { imageBlockSchema } from "@milkdown/kit/component/image-block";
 import "@milkdown/crepe/theme/common/style.css";
@@ -305,6 +306,18 @@ const api = {
   redo() {
     if (sourceMode) document.execCommand("redo");
     else crepe?.editor.action(callCommand(redoCommand.key));
+  },
+  /** Turns the current block into a heading of `level` (1–6), or a paragraph for 0. */
+  setHeading(level: number) {
+    if (!sourceMode) {
+      crepe?.editor.action(callCommand(wrapInHeadingCommand.key, level));
+      return;
+    }
+    const start = source.value.lastIndexOf("\n", source.selectionStart - 1) + 1;
+    const prefix = /^#{1,6}[ \t]+/.exec(source.value.slice(start))?.[0] ?? "";
+    source.focus();
+    source.setSelectionRange(start, start + prefix.length);
+    document.execCommand("insertText", false, level > 0 ? "#".repeat(level) + " " : "");
   },
   showFind,
   findNext: () => findNext(false),
