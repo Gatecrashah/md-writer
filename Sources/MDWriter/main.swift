@@ -81,10 +81,18 @@ private func makeMainMenu() -> NSMenu {
             item("Find Next", #selector(EditorWindowController.findNext(_:)), "g"),
             item("Find Previous", #selector(EditorWindowController.findPrevious(_:)), "g", [.command, .shift]),
         ]),
+        submenu("Paragraph", (1...6).map { level in
+            let heading = item("Heading \(level)", #selector(EditorWindowController.setHeading(_:)), "\(level)")
+            heading.tag = level
+            return heading
+        } + [
+            .separator(),
+            item("Paragraph", #selector(EditorWindowController.setHeading(_:)), "0"),
+        ]),
         submenu("View", [
             item("Source Code Mode", #selector(EditorWindowController.toggleSourceMode(_:)), "/"),
             .separator(),
-            item("Actual Size", #selector(EditorWindowController.resetZoom(_:)), "0"),
+            item("Actual Size", #selector(EditorWindowController.resetZoom(_:)), "0", [.command, .option]),
             item("Zoom In", #selector(EditorWindowController.zoomIn(_:)), "+"),
             item("Zoom Out", #selector(EditorWindowController.zoomOut(_:)), "-"),
             .separator(),
