@@ -57,7 +57,22 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
         window.titlebarAppearsTransparent = true
         window.tabbingMode = .preferred
         window.minSize = NSSize(width: 400, height: 300)
-        window.contentView = webView
+        window.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 0x1e / 255, green: 0x1e / 255, blue: 0x1e / 255, alpha: 1)
+                : .white
+        }
+        let container = NSView()
+        window.contentView = container
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(webView)
+        let content = window.contentLayoutGuide as! NSLayoutGuide
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: content.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
         window.setFrameAutosaveName("EditorWindow")
         if window.frame.origin == .zero { window.center() }
         super.init(window: window)

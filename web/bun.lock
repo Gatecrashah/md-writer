@@ -5,6 +5,7 @@
     "": {
       "name": "mdwriter-web",
       "dependencies": {
+        "@floating-ui/dom": "1.8.0",
         "@milkdown/crepe": "7.22.3",
         "@milkdown/kit": "7.22.3",
       },
