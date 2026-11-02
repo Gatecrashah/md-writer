@@ -7,6 +7,9 @@ private enum EditorMessage {
     case changed(markdown: String)
     case openURL(URL)
     case saveImage(id: Int, name: String, data: Data)
+    case requestReview
+    case cancelReview
+    case reviewOutcome(id: String, outcome: ReviewThread.Outcome)
 
     init?(_ body: Any) {
         guard let dict = body as? [String: Any], let type = dict["type"] as? String else { return nil }
@@ -23,6 +26,14 @@ private enum EditorMessage {
             guard let id = dict["id"] as? Int, let name = dict["name"] as? String,
                   let b64 = dict["base64"] as? String, let data = Data(base64Encoded: b64) else { return nil }
             self = .saveImage(id: id, name: name, data: data)
+        case "requestReview":
+            self = .requestReview
+        case "cancelReview":
+            self = .cancelReview
+        case "reviewOutcome":
+            guard let id = dict["id"] as? String, let raw = dict["outcome"] as? String,
+                  let outcome = ReviewThread.Outcome(rawValue: raw) else { return nil }
+            self = .reviewOutcome(id: id, outcome: outcome)
         default:
             return nil
         }
@@ -38,9 +49,12 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-final class EditorWindowController: NSWindowController, WKScriptMessageHandler, WKNavigationDelegate {
+final class EditorWindowController: NSWindowController, WKScriptMessageHandler, WKNavigationDelegate,
+    NSMenuItemValidation {
     private let webView: WKWebView
     private var editorReady = false
+    private var reviewThread: ReviewThread?
+    private var reviewRunner: ReviewRunner?
 
     private var markdownDocument: MarkdownDocument? { document as? MarkdownDocument }
 
@@ -125,6 +139,12 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
         case .saveImage(let id, let name, let data):
             let path = (try? saveImage(named: name, data: data)) ?? ""
             call("mdw.imageSaved(id, path)", ["id": id, "path": path])
+        case .requestReview:
+            requestReview(nil)
+        case .cancelReview:
+            cancelReview(nil)
+        case .reviewOutcome(let id, let outcome):
+            reviewThread?.outcomes[id] = outcome
         }
     }
 
@@ -168,6 +188,121 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
     @objc func zoomIn(_ sender: Any?) { webView.pageZoom = min(webView.pageZoom + 0.1, 3) }
     @objc func zoomOut(_ sender: Any?) { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
     @objc func resetZoom(_ sender: Any?) { webView.pageZoom = 1 }
+
+    @objc func requestReview(_ sender: Any?) { showReviewSheet(fresh: false) }
+    @objc func startFreshReview(_ sender: Any?) { showReviewSheet(fresh: true) }
+    @objc func reviewAgain(_ sender: Any?) {
+        guard let reviewThread else { return showReviewSheet(fresh: false) }
+        runReview(reviewThread)
+    }
+    @objc func cancelReview(_ sender: Any?) { reviewRunner?.cancel() }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(requestReview(_:)), #selector(startFreshReview(_:)), #selector(reviewAgain(_:)):
+            return reviewRunner == nil
+        case #selector(cancelReview(_:)):
+            return reviewRunner != nil
+        default:
+            return true
+        }
+    }
+
+    // MARK: Review
+
+    private func showReviewSheet(fresh: Bool) {
+        guard let window, reviewRunner == nil else { return }
+        let defaults = UserDefaults.standard
+        let last = reviewThread?.request ?? ReviewRequest(
+            lens: ReviewLens(rawValue: defaults.string(forKey: "reviewLens") ?? "") ?? .lineEdit,
+            model: ReviewModel(rawValue: defaults.string(forKey: "reviewModel") ?? "") ?? .sonnet,
+            note: "")
+
+        let lens = NSPopUpButton()
+        lens.addItems(withTitles: ReviewLens.allCases.map(\.title))
+        lens.selectItem(at: ReviewLens.allCases.firstIndex(of: last.lens)!)
+        let model = NSPopUpButton()
+        model.addItems(withTitles: ReviewModel.allCases.map(\.title))
+        model.selectItem(at: ReviewModel.allCases.firstIndex(of: last.model)!)
+        let note = NSTextField(string: last.note)
+        note.placeholderString = "Optional, e.g. \"for a non-technical audience\""
+        note.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        let grid = NSGridView(views: [
+            [NSTextField(labelWithString: "Focus:"), lens],
+            [NSTextField(labelWithString: "Model:"), model],
+            [NSTextField(labelWithString: "Note:"), note],
+        ])
+        grid.column(at: 0).xPlacement = .trailing
+        grid.rowAlignment = .firstBaseline
+        grid.frame.size = grid.fittingSize
+
+        let alert = NSAlert()
+        alert.messageText = fresh || reviewThread == nil ? "Review This Draft" : "Review Again"
+        alert.informativeText = fresh || reviewThread == nil
+            ? "Claude reads the draft and leaves notes in the margin."
+            : "Claude continues the previous review and sees which notes you applied or dismissed."
+        alert.accessoryView = grid
+        alert.addButton(withTitle: "Review")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = lens
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let request = ReviewRequest(lens: ReviewLens.allCases[lens.indexOfSelectedItem],
+                                        model: ReviewModel.allCases[model.indexOfSelectedItem],
+                                        note: note.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            defaults.set(request.lens.rawValue, forKey: "reviewLens")
+            defaults.set(request.model.rawValue, forKey: "reviewModel")
+            // A different focus is a different review; resuming would carry the old lens's notes along.
+            if fresh || reviewThread?.request.lens != request.lens {
+                reviewThread = ReviewThread(request: request)
+            } else {
+                reviewThread?.request = request
+            }
+            runReview(reviewThread!)
+        }
+    }
+
+    private func runReview(_ thread: ReviewThread) {
+        guard let doc = markdownDocument, reviewRunner == nil else { return }
+        let runner = ReviewRunner()
+        reviewRunner = runner
+        call("mdw.reviewStarted()")
+        runner.start(markdown: doc.markdown, prompt: thread.prompt(), model: thread.request.model,
+                     resume: thread.sessionID) { [weak self] result in
+            guard let self else { return }
+            reviewRunner = nil
+            switch result {
+            case .success(let (review, sessionID)):
+                var next = thread
+                next.sessionID = sessionID
+                next.round += 1
+                next.outcomes = [:]
+                next.findings = Dictionary(uniqueKeysWithValues: review.findings.enumerated().map {
+                    ("\(next.round).\($0.offset + 1)", $0.element)
+                })
+                reviewThread = next
+                let findings = review.findings.indices.map { i -> [String: Any] in
+                    let f = review.findings[i]
+                    var dict: [String: Any] = ["id": "\(next.round).\(i + 1)", "kind": f.kind.rawValue,
+                                               "quote": f.quote, "message": f.message]
+                    if let r = f.replacement { dict["replacement"] = r }
+                    return dict
+                }
+                let label = "\(thread.request.lens.title) · \(thread.request.model.title) · round \(next.round)"
+                call("mdw.showReview(review)", ["review": ["summary": review.summary, "label": label,
+                                                           "findings": findings]])
+            case .failure(.cancelled):
+                call("mdw.reviewEnded()")
+            case .failure(let error):
+                call("mdw.reviewEnded()")
+                guard let window else { return }
+                let alert = NSAlert()
+                alert.messageText = "Review Failed"
+                alert.informativeText = error.localizedDescription
+                alert.beginSheetModal(for: window)
+            }
+        }
+    }
 
     func printOperation(with info: NSPrintInfo) -> NSPrintOperation {
         let op = webView.printOperation(with: info)

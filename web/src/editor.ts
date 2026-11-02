@@ -2,9 +2,10 @@ import { Crepe } from "@milkdown/crepe";
 import { size } from "@floating-ui/dom";
 import { callCommand } from "@milkdown/kit/utils";
 import { undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
-import { wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
+import { paragraphSchema, wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
 import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
 import { imageBlockSchema } from "@milkdown/kit/component/image-block";
+import { initReview, reviewEnded, reviewPlugin, reviewStarted, showReview, type ReviewOutcome } from "./review";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -13,7 +14,10 @@ type ToNative =
   | { type: "ready" }
   | { type: "changed"; markdown: string }
   | { type: "openURL"; url: string }
-  | { type: "saveImage"; id: number; name: string; base64: string };
+  | { type: "saveImage"; id: number; name: string; base64: string }
+  | { type: "requestReview" }
+  | { type: "cancelReview" }
+  | { type: "reviewOutcome"; id: string; outcome: ReviewOutcome };
 
 declare global {
   interface Window {
@@ -99,6 +103,22 @@ async function mountEditor(markdown: string) {
   });
   crepe.editor.config((ctx) => {
     ctx.update(remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: "-" as const }));
+    // Upstream writes empty paragraphs as `<br />` lines; save plain Markdown instead. Files that
+    // already contain those lines still open as empty paragraphs.
+    ctx.update(paragraphSchema.key, (prev) => (ctx) => {
+      const base = prev(ctx);
+      return {
+        ...base,
+        toMarkdown: {
+          match: base.toMarkdown.match,
+          runner: (state, node) => {
+            if (node.content.size > 0) return base.toMarkdown.runner(state, node);
+            state.openNode("paragraph");
+            state.closeNode();
+          },
+        },
+      };
+    });
     // Upstream stores the resize ratio in the alt text; keep the real alt text instead.
     ctx.update(imageBlockSchema.key, (prev) => (ctx) => {
       const base = prev(ctx);
@@ -137,6 +157,7 @@ async function mountEditor(markdown: string) {
       post({ type: "changed", markdown: md });
     }),
   );
+  crepe.editor.use(reviewPlugin);
   await crepe.create();
   updateCount(markdown);
   editorRoot.querySelector<HTMLElement>(".ProseMirror")?.focus();
@@ -322,11 +343,19 @@ const api = {
   showFind,
   findNext: () => findNext(false),
   findPrevious: () => findNext(true),
+  reviewStarted,
+  reviewEnded,
+  showReview,
   imageSaved(id: number, path: string) {
     pendingImages.get(id)?.(path);
     pendingImages.delete(id);
   },
 };
 
+initReview({
+  request: () => post({ type: "requestReview" }),
+  cancel: () => post({ type: "cancelReview" }),
+  outcome: (id, outcome) => post({ type: "reviewOutcome", id, outcome }),
+});
 window.mdw = api;
 post({ type: "ready" });
