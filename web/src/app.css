@@ -69,10 +69,12 @@ html, body {
   --crepe-font-code: "SF Mono", Menlo, Monaco, monospace;
   background: var(--bg);
 }
+/* The side padding must fit Crepe's block handle (about 60px wide, 16px from the text); with less room
+   it is clipped or flips to the right of the text. */
 .milkdown .ProseMirror {
-  max-width: 820px;
+  max-width: 876px;
   margin: 0 auto;
-  padding: 48px 60px 40vh;
+  padding: 48px 88px 40vh;
 }
 #source {
   display: block;
