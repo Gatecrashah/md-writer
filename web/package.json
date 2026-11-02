@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/editor.ts --outdir ../Resources/web --minify --target browser --format iife && cp src/index.html src/app.css ../Resources/web/"
+    "build": "bun build src/editor.ts --outdir ../Resources/web --minify --target browser --format iife && cp src/index.html src/app.css ../Resources/web/",
+    "test": "bun test"
   },
   "dependencies": {
     "@floating-ui/dom": "1.8.0",

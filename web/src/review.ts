@@ -1,7 +1,7 @@
 import { $prose } from "@milkdown/kit/utils";
 import { Plugin, PluginKey, type EditorState } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, type EditorView } from "@milkdown/kit/prose/view";
-import type { Node } from "@milkdown/kit/prose/model";
+import { OBJECT, anchor, normalize, stripInlineMarkdown, type Range } from "./anchor";
 
 /** A finding as the native side sends it; `id` is unique across review rounds. */
 export type Finding = {
@@ -15,40 +15,11 @@ export type Finding = {
 export type Review = { summary: string; label: string; modelID: string | null; findings: Finding[] };
 export type ReviewOutcome = "applied" | "dismissed";
 
-type Range = { from: number; to: number };
 type Anchors = Map<string, Range>;
 type Meta = { anchors: Anchors } | { remove: string } | { active: string | null };
 type PluginState = { anchors: Anchors; active: string | null };
 
 const key = new PluginKey<PluginState>("review");
-
-/** Characters Claude may type differently from the draft. Each maps to one character, so offsets survive. */
-const normalize = (s: string) =>
-  s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/ /g, " ");
-
-const OBJECT = "￼";
-
-/** Finds `quote` inside a single textblock and returns its document range. */
-function locate(doc: Node, quote: string): Range | null {
-  const needle = normalize(quote);
-  let found: Range | null = null;
-  doc.descendants((node, pos) => {
-    if (found) return false;
-    if (!node.isTextblock) return true;
-    let text = "";
-    const at: number[] = [];
-    node.forEach((child, offset) => {
-      const start = pos + 1 + offset;
-      const chunk = child.isText ? child.text! : OBJECT;
-      for (let i = 0; i < chunk.length; i++) at.push(start + i);
-      text += chunk;
-    });
-    const i = normalize(text).indexOf(needle);
-    if (i >= 0) found = { from: at[i], to: at[i + needle.length - 1] + 1 };
-    return false;
-  });
-  return found;
-}
 
 const textAt = (state: EditorState, r: Range) => normalize(state.doc.textBetween(r.from, r.to, OBJECT, OBJECT));
 
@@ -134,8 +105,14 @@ function anchorAll() {
   if (!view || !review) return render();
   const next: Anchors = new Map();
   for (const f of review.findings) {
-    const r = f.quote ? locate(view.state.doc, f.quote) : null;
-    if (r) next.set(f.id, r);
+    const found = f.quote ? anchor(view.state.doc, f.quote) : null;
+    if (!found) continue;
+    if (found.quote !== f.quote) {
+      // The reviewer quoted Markdown syntax; its replacement is written the same way, and Apply inserts plain text.
+      f.quote = found.quote;
+      if (f.replacement) f.replacement = stripInlineMarkdown(f.replacement);
+    }
+    next.set(f.id, found.range);
   }
   dispatch({ anchors: next });
 }
