@@ -213,22 +213,27 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
     private func showReviewSheet(fresh: Bool) {
         guard let window, reviewRunner == nil else { return }
         let defaults = UserDefaults.standard
-        let last = reviewThread?.request ?? ReviewRequest(
-            lens: ReviewLens(rawValue: defaults.string(forKey: "reviewLens") ?? "") ?? .lineEdit,
-            model: ReviewModel(rawValue: defaults.string(forKey: "reviewModel") ?? "") ?? .sonnet,
-            note: "")
+        let reviewers = Reviewer.available()
+        let lastReviewer = reviewThread?.request.reviewer.name
+            ?? defaults.string(forKey: "reviewer") ?? Reviewer.defaultName
+        let lastModel = reviewThread?.request.model
+            ?? ReviewModel(rawValue: defaults.string(forKey: "reviewModel") ?? "") ?? .sonnet
 
-        let lens = NSPopUpButton()
-        lens.addItems(withTitles: ReviewLens.allCases.map(\.title))
-        lens.selectItem(at: ReviewLens.allCases.firstIndex(of: last.lens)!)
+        let reviewer = NSPopUpButton()
+        for r in reviewers {
+            reviewer.addItem(withTitle: r.title)
+            reviewer.lastItem?.toolTip = r.description
+        }
+        reviewer.selectItem(at: reviewers.firstIndex { $0.name == lastReviewer }
+            ?? reviewers.firstIndex { $0.name == Reviewer.defaultName } ?? 0)
         let model = NSPopUpButton()
         model.addItems(withTitles: ReviewModel.allCases.map(\.title))
-        model.selectItem(at: ReviewModel.allCases.firstIndex(of: last.model)!)
-        let note = NSTextField(string: last.note)
+        model.selectItem(at: ReviewModel.allCases.firstIndex(of: lastModel)!)
+        let note = NSTextField(string: reviewThread?.request.note ?? "")
         note.placeholderString = "Optional, e.g. \"for a non-technical audience\""
         note.widthAnchor.constraint(equalToConstant: 260).isActive = true
         let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "Focus:"), lens],
+            [NSTextField(labelWithString: "Reviewer:"), reviewer],
             [NSTextField(labelWithString: "Model:"), model],
             [NSTextField(labelWithString: "Note:"), note],
         ])
@@ -244,16 +249,17 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
         alert.accessoryView = grid
         alert.addButton(withTitle: "Review")
         alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = lens
+        alert.window.initialFirstResponder = reviewer
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            let request = ReviewRequest(lens: ReviewLens.allCases[lens.indexOfSelectedItem],
+            guard let self, response == .alertFirstButtonReturn, reviewers.indices.contains(reviewer.indexOfSelectedItem)
+            else { return }
+            let request = ReviewRequest(reviewer: reviewers[reviewer.indexOfSelectedItem],
                                         model: ReviewModel.allCases[model.indexOfSelectedItem],
                                         note: note.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
-            defaults.set(request.lens.rawValue, forKey: "reviewLens")
+            defaults.set(request.reviewer.name, forKey: "reviewer")
             defaults.set(request.model.rawValue, forKey: "reviewModel")
-            // A different focus is a different review; resuming would carry the old lens's notes along.
-            if fresh || reviewThread?.request.lens != request.lens {
+            // A different reviewer is a different review; resuming would carry the old skill's notes along.
+            if fresh || reviewThread?.request.reviewer != request.reviewer {
                 reviewThread = ReviewThread(request: request)
             } else {
                 reviewThread?.request = request
@@ -267,14 +273,15 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
         let runner = ReviewRunner()
         reviewRunner = runner
         call("mdw.reviewStarted()")
-        runner.start(markdown: doc.markdown, prompt: thread.prompt(), model: thread.request.model,
-                     resume: thread.sessionID) { [weak self] result in
+        runner.start(markdown: doc.markdown, prompt: thread.prompt(), reviewer: thread.request.reviewer,
+                     model: thread.request.model, resume: thread.sessionID) { [weak self] result in
             guard let self else { return }
             reviewRunner = nil
             switch result {
-            case .success(let (review, sessionID)):
+            case .success(let result):
+                let review = result.review
                 var next = thread
-                next.sessionID = sessionID
+                next.sessionID = result.sessionID
                 next.round += 1
                 next.outcomes = [:]
                 next.findings = Dictionary(uniqueKeysWithValues: review.findings.enumerated().map {
@@ -288,8 +295,10 @@ final class EditorWindowController: NSWindowController, WKScriptMessageHandler, 
                     if let r = f.replacement { dict["replacement"] = r }
                     return dict
                 }
-                let label = "\(thread.request.lens.title) · \(thread.request.model.title) · round \(next.round)"
+                let modelName = result.modelID.map(readableModelName) ?? thread.request.model.title
+                let label = "\(thread.request.reviewer.title) · \(modelName) · round \(next.round)"
                 call("mdw.showReview(review)", ["review": ["summary": review.summary, "label": label,
+                                                           "modelID": result.modelID.map { $0 as Any } ?? NSNull(),
                                                            "findings": findings]])
             case .failure(.cancelled):
                 call("mdw.reviewEnded()")

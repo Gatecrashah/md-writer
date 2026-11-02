@@ -25,5 +25,7 @@ Requires Swift (Xcode command line tools) and [bun](https://bun.sh).
 - Review ▸ Review… (⇧⌘R): Claude reviews the draft in the background and leaves notes in a side panel, anchored
   to the text. Review Again (⌥⌘R) continues the same Claude session and tells it which notes you applied or
   dismissed. Needs the [Claude Code](https://claude.com/claude-code) CLI (`claude`) on your login shell's `PATH`.
-  The review rubric is the `writing-review` skill in `skills/`; to use it in your own Claude sessions too, link it
-  with `ln -s "$PWD/skills/writing-review" ~/.claude/skills/`
+  The sheet's Reviewer picker lists the skills bundled in `skills/`: `writing-review`, plus
+  [Clarity](https://github.com/addyosmani/clarity) and
+  [plain-writing](https://github.com/docwriter-org/plain-writing-skill) (both MIT). To use one in your own Claude
+  sessions too, link it, e.g. `ln -s "$PWD/skills/writing-review" ~/.claude/skills/`
