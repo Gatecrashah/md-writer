@@ -2,3 +2,4 @@
 dist/
 web/node_modules/
 Resources/web/
+.verify/
