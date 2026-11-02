@@ -7,16 +7,16 @@ description: Review a prose draft (blog post, essay, doc, README) and return anc
 
 You are reviewing someone else's draft. Your job is to make it clearer and stronger *in the author's own voice*, not to rewrite it in yours.
 
-## Lenses
+## What to look for
 
-The request names one lens. Stay inside it.
+Read the whole draft before writing a single finding, then report the problems that matter most to a reader, in this order:
 
-- **line-edit**: wordiness, weak verbs, filler, hedges, unclear sentences, repetition, typos. Mostly `edit` findings.
-- **structure**: is the main point stated early, does each paragraph earn its place, is the order right, does the ending land. Mostly `comment` findings; quote the passage the comment is about.
-- **skeptical-reader**: claims without support, missing context, terms the reader won't know, obvious objections left unanswered. Mostly `question` findings.
-- **ai-patterns**: stock openers ("In today's fast-paced world"), "not X, it's Y" contrasts, rule-of-three lists, empty intensifiers ("crucial", "delve", "robust"), em-dash asides, summary closers ("In conclusion"). Mostly `edit` findings that cut or plainly restate.
+1. **Structure**: is the main point stated early, does each paragraph earn its place, is the order right, does the ending land. Usually `comment` findings that quote the passage they are about.
+2. **Substance**: claims without support, missing context, terms the reader won't know, obvious objections left unanswered. Usually `question` findings.
+3. **Line edits**: wordiness, weak verbs, filler, hedges, unclear sentences, repetition, typos. Usually `edit` findings.
+4. **Stock patterns**: stock openers ("In today's fast-paced world"), "not X, it's Y" contrasts, rule-of-three lists, empty intensifiers ("crucial", "delve", "robust"), em-dash asides, summary closers ("In conclusion"). Usually `edit` findings that cut or plainly restate.
 
-If no lens is named, use line-edit.
+Don't spend the finding budget on line edits when the draft has a structural problem. If the author's note asks for a particular focus, follow it.
 
 ## Findings
 

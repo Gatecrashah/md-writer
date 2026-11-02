@@ -11,7 +11,8 @@ export type Finding = {
   message: string;
   replacement?: string;
 };
-export type Review = { summary: string; label: string; findings: Finding[] };
+/** `modelID` is the exact model that wrote the review, e.g. `claude-opus-5-5`, when Claude Code reports it. */
+export type Review = { summary: string; label: string; modelID: string | null; findings: Finding[] };
 export type ReviewOutcome = "applied" | "dismissed";
 
 type Range = { from: number; to: number };
@@ -231,7 +232,9 @@ function render() {
   const findings = [...review.findings].sort((x, y) => order(x) - order(y));
 
   const head = el("header", "notes-head");
-  head.append(el("span", "notes-label", review.label), button("✕", false, () => setPanel(false)));
+  const label = el("span", "notes-label", review.label);
+  if (review.modelID) label.title = review.modelID;
+  head.append(label, button("✕", false, () => setPanel(false)));
   const body: HTMLElement[] = [head, el("p", "summary", review.summary)];
   body.push(...findings.map((f) => card(f, a.has(f.id), f.id === active)));
   if (!findings.length) body.push(el("p", "done", "All notes resolved. Review Again (⌥⌘R) for another pass."));
