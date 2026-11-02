@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# Drive a disposable MD Writer instance for verification. Run `mdw help` for commands.
+set -euo pipefail
+
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL="$(dirname "$SCRIPTS")"
+REPO="$(git -C "$SKILL" rev-parse --show-toplevel)"
+APP="$REPO/dist/MD Writer.app"
+BIN="$APP/Contents/MacOS/MDWriter"
+VERIFY="$REPO/.verify"
+CURRENT="$VERIFY/current"
+REVIEW_SESSIONS="$HOME/.claude/projects/-Users-$(id -un)-Library-Application-Support-MD-Writer-Review"
+
+die() { echo "mdw: $*" >&2; exit 1; }
+ax() { osascript -l JavaScript "$SCRIPTS/ax.js" "$@"; }
+win() { uv run -q --with pyobjc-framework-Quartz python -I "$SCRIPTS/window.py" "$@"; }
+
+load() {
+  [[ -f "$CURRENT" ]] || die "no instance; run: mdw launch"
+  # shellcheck source=/dev/null
+  source "$CURRENT"
+  kill -0 "$PID" 2>/dev/null || die "instance $PID (run $RUN_ID) is not running; run: mdw cleanup, then mdw launch"
+}
+
+usage() {
+  cat <<'EOF'
+mdw build                          build dist/MD Writer.app (scripts/build-app.sh)
+mdw launch [file.md]               start a disposable instance on a copy of file.md (default: fixtures/draft.md)
+mdw doctor                         read-only health check of the current instance
+mdw status                         print PID, run ID, document and evidence paths
+mdw text                           visible text of the window (editor, notes panel, status bar)
+mdw has <role> <text>              exit 0 if an accessibility element matches (e.g. AXButton Apply)
+mdw press <role> <text>            press an element without mouse or focus (web buttons too)
+mdw dump [depth]                   accessibility tree of the window
+mdw menu <menu> <item>             choose a menu-bar item (activates the instance first)
+mdw keys <text> [mods]             type into the instance; mods: command,shift,option,control
+mdw keycode <code> [mods]          press a key by code: 53 Escape, 36 Return, 51 Delete
+mdw sheet                          controls of the open sheet
+mdw sheet-select <index> <title>   pick <title> in the sheet's pop-up <index> (0 Reviewer, 1 Model)
+mdw sheet-note <text>              fill the sheet's Note field
+mdw sheet-press <title>            press a sheet button (Review, Cancel)
+mdw click <x> <y>                  real click at window-relative points (only for the editor caret)
+mdw wait-text <text> [secs]        wait until visible text contains <text> (default 30s)
+mdw wait-review [secs]             wait until no review process runs under the instance (default 240s)
+mdw shot <name>                    screenshot the window into the evidence dir as <name>.png
+mdw save-text <name>               save `mdw text` into the evidence dir as <name>.txt
+mdw save-doc <name>                save the document file on disk into the evidence dir as <name>.md
+mdw save-prompts <name>            save the prompts of the newest review session as <name>.prompts.txt
+mdw cleanup                        quit the instance this run started and delete its scratch documents
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  build)
+    "$REPO/scripts/build-app.sh"
+    ;;
+
+  launch)
+    [[ -x "$BIN" ]] || die "no build at $APP; run: mdw build"
+    if [[ -f "$CURRENT" ]]; then
+      # shellcheck source=/dev/null
+      source "$CURRENT"
+      kill -0 "$PID" 2>/dev/null && die "run $RUN_ID (pid $PID) is still running; run: mdw cleanup"
+    fi
+    src="${1:-$SKILL/fixtures/draft.md}"
+    [[ -f "$src" ]] || die "no such file: $src"
+    RUN_ID="$(date +%Y%m%d-%H%M%S)"
+    RUN_DIR="$VERIFY/runs/$RUN_ID"
+    EVIDENCE="$VERIFY/evidence/$RUN_ID"
+    mkdir -p "$RUN_DIR" "$EVIDENCE"
+    DOC="$RUN_DIR/$(basename "$src")"
+    cp "$src" "$DOC"
+    before="$(pgrep -x MDWriter | sort || true)"
+    # -n: a new process even when the user's MD Writer is open. -ApplePersistenceIgnoreState: don't restore
+    # the user's tabs into this instance (they are the same documents; editing them here edits theirs).
+    open -n -a "$APP" --args -ApplePersistenceIgnoreState YES "$DOC"
+    PID=""
+    for _ in $(seq 1 50); do
+      PID="$(comm -13 <(echo "$before") <(pgrep -x MDWriter | sort || true) | head -1)"
+      [[ -n "$PID" ]] && break
+      sleep 0.2
+    done
+    [[ -n "$PID" ]] || die "app did not start"
+    printf 'PID=%s\nRUN_ID=%s\nDOC=%q\nEVIDENCE=%q\nRUN_DIR=%q\n' "$PID" "$RUN_ID" "$DOC" "$EVIDENCE" "$RUN_DIR" >"$CURRENT"
+    for _ in $(seq 1 50); do
+      ax has "$PID" AXStaticText " word" >/dev/null 2>&1 && break
+      sleep 0.3
+    done
+    ax has "$PID" AXStaticText " word" >/dev/null 2>&1 || die "pid $PID started but the editor never showed a word count"
+    echo "launched pid $PID, run $RUN_ID"
+    echo "document: $DOC"
+    echo "evidence: $EVIDENCE"
+    ;;
+
+  status)
+    load
+    printf 'pid %s\nrun %s\ndocument %s\nevidence %s\n' "$PID" "$RUN_ID" "$DOC" "$EVIDENCE"
+    ;;
+
+  doctor)
+    load
+    ok=1
+    check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; ok=0; fi; }
+    exe="$(ps -o comm= -p "$PID")"
+    check "pid $PID runs this repo's build ($exe)" '[[ "$exe" == "$BIN" ]]'
+    started="$(date -j -f "%a %b %d %T %Y" "$(ps -o lstart= -p "$PID" | xargs)" +%s)"
+    built="$(stat -f %m "$BIN")"
+    check "instance started after the last build (else it runs stale code: mdw cleanup && mdw launch)" '(( started >= built ))'
+    windows="$(ax windows "$PID")"
+    check "window shows the run's document ($(basename "$DOC"))" '[[ "$windows" == *"$(basename "$DOC")"* ]]'
+    check "only the run's document is open (no restored user tabs)" '[[ "$(wc -l <<<"$windows" | xargs)" == 1 ]]'
+    check "editor rendered (word count visible)" 'ax has "$PID" AXStaticText " word" >/dev/null 2>&1'
+    check "Review menu present" 'ax menu-state "$PID" Review "Review…" >/dev/null 2>&1'
+    check "claude found by a login shell (needed for reviews)" '/bin/zsh -lc "command -v claude" >/dev/null 2>&1'
+    others="$(pgrep -x MDWriter | grep -vx "$PID" | xargs || true)"
+    [[ -n "$others" ]] && echo "note other MD Writer processes are running (pids $others): likely the user's; never drive them"
+    busy="$(for p in $others; do pgrep -P "$p" >/dev/null && echo "$p"; done | xargs)"
+    check "no review running in another MD Writer (reviews share one work folder)" '[[ -z "$busy" ]]'
+    (( ok )) || exit 1
+    ;;
+
+  text) load; ax text "$PID" ;;
+  has) load; ax has "$PID" "$@" ;;
+  press) load; ax press "$PID" "$@" ;;
+  dump) load; ax dump "$PID" "$@" ;;
+  menu) load; ax menu "$PID" "$@" ;;
+  keys) load; ax keys "$PID" "$@" ;;
+  keycode) load; ax keycode "$PID" "$@" ;;
+  sheet) load; ax sheet "$PID" ;;
+  sheet-select) load; ax sheet-select "$PID" "$@" ;;
+  sheet-note) load; ax sheet-note "$PID" "$@" ;;
+  sheet-press) load; ax sheet-press "$PID" "$@" ;;
+
+  click)
+    load
+    ax raise "$PID" >/dev/null
+    win click "$PID" "$1" "$2"
+    ;;
+
+  wait-text)
+    load
+    deadline=$(( SECONDS + ${2:-30} ))
+    until ax text "$PID" | grep -qF -- "$1"; do
+      (( SECONDS < deadline )) || die "timed out waiting for text: $1"
+      sleep 0.5
+    done
+    echo "found: $1"
+    ;;
+
+  wait-review)
+    load
+    deadline=$(( SECONDS + ${1:-240} ))
+    sleep 1
+    while pgrep -P "$PID" >/dev/null; do
+      (( SECONDS < deadline )) || die "review still running after ${1:-240}s (cancel with: mdw menu Review 'Cancel Review')"
+      sleep 2
+    done
+    sleep 1
+    echo "no review running under pid $PID"
+    ;;
+
+  shot)
+    load
+    out="$EVIDENCE/$1.png"
+    screencapture -x -o -l "$(win id "$PID")" "$out"
+    echo "$out"
+    ;;
+
+  save-text)
+    load
+    ax text "$PID" >"$EVIDENCE/$1.txt"
+    echo "$EVIDENCE/$1.txt"
+    ;;
+
+  save-doc)
+    load
+    cp "$DOC" "$EVIDENCE/$1.md"
+    echo "$EVIDENCE/$1.md"
+    ;;
+
+  save-prompts)
+    load
+    session="$(ls -t "$REVIEW_SESSIONS"/*.jsonl 2>/dev/null | head -1)"
+    [[ -n "$session" ]] || die "no review sessions in $REVIEW_SESSIONS"
+    out="$EVIDENCE/$1.prompts.txt"
+    uv run -q python -I -c '
+import json, sys
+for line in open(sys.argv[1]):
+    entry = json.loads(line)
+    content = entry.get("message", {}).get("content") if entry.get("type") == "user" else None
+    if isinstance(content, str):
+        print("=== prompt", entry.get("timestamp", ""))
+        print(content)
+' "$session" >"$out"
+    echo "$out (session $(basename "$session" .jsonl))"
+    ;;
+
+  cleanup)
+    [[ -f "$CURRENT" ]] || { echo "nothing to clean up"; exit 0; }
+    # shellcheck source=/dev/null
+    source "$CURRENT"
+    if kill -0 "$PID" 2>/dev/null; then
+      for p in $(pgrep -P "$PID" || true); do kill "$p" 2>/dev/null || true; done
+      kill "$PID"
+      for _ in $(seq 1 25); do kill -0 "$PID" 2>/dev/null || break; sleep 0.2; done
+      kill -0 "$PID" 2>/dev/null && kill -9 "$PID"
+    fi
+    rm -rf "$RUN_DIR" "$CURRENT"
+    echo "stopped pid $PID, removed $RUN_DIR"
+    echo "evidence kept: $EVIDENCE"
+    ;;
+
+  help | -h | --help) usage ;;
+  *) usage; exit 1 ;;
+esac
