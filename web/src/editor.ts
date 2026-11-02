@@ -5,6 +5,7 @@ import { undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
 import { wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
 import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
 import { imageBlockSchema } from "@milkdown/kit/component/image-block";
+import { initReview, reviewEnded, reviewPlugin, reviewStarted, showReview, type ReviewOutcome } from "./review";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -13,7 +14,10 @@ type ToNative =
   | { type: "ready" }
   | { type: "changed"; markdown: string }
   | { type: "openURL"; url: string }
-  | { type: "saveImage"; id: number; name: string; base64: string };
+  | { type: "saveImage"; id: number; name: string; base64: string }
+  | { type: "requestReview" }
+  | { type: "cancelReview" }
+  | { type: "reviewOutcome"; id: string; outcome: ReviewOutcome };
 
 declare global {
   interface Window {
@@ -137,6 +141,7 @@ async function mountEditor(markdown: string) {
       post({ type: "changed", markdown: md });
     }),
   );
+  crepe.editor.use(reviewPlugin);
   await crepe.create();
   updateCount(markdown);
   editorRoot.querySelector<HTMLElement>(".ProseMirror")?.focus();
@@ -322,11 +327,19 @@ const api = {
   showFind,
   findNext: () => findNext(false),
   findPrevious: () => findNext(true),
+  reviewStarted,
+  reviewEnded,
+  showReview,
   imageSaved(id: number, path: string) {
     pendingImages.get(id)?.(path);
     pendingImages.delete(id);
   },
 };
 
+initReview({
+  request: () => post({ type: "requestReview" }),
+  cancel: () => post({ type: "cancelReview" }),
+  outcome: (id, outcome) => post({ type: "reviewOutcome", id, outcome }),
+});
 window.mdw = api;
 post({ type: "ready" });

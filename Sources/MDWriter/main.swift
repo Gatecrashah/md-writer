@@ -89,6 +89,13 @@ private func makeMainMenu() -> NSMenu {
             .separator(),
             item("Paragraph", #selector(EditorWindowController.setHeading(_:)), "0"),
         ]),
+        submenu("Review", [
+            item("Review…", #selector(EditorWindowController.requestReview(_:)), "r", [.command, .shift]),
+            item("Review Again", #selector(EditorWindowController.reviewAgain(_:)), "r", [.command, .option]),
+            item("Start Fresh Review…", #selector(EditorWindowController.startFreshReview(_:))),
+            .separator(),
+            item("Cancel Review", #selector(EditorWindowController.cancelReview(_:))),
+        ]),
         submenu("View", [
             item("Source Code Mode", #selector(EditorWindowController.toggleSourceMode(_:)), "/"),
             .separator(),
