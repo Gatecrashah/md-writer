@@ -2,7 +2,7 @@ import { Crepe } from "@milkdown/crepe";
 import { size } from "@floating-ui/dom";
 import { callCommand } from "@milkdown/kit/utils";
 import { undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
-import { wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
+import { paragraphSchema, wrapInHeadingCommand } from "@milkdown/kit/preset/commonmark";
 import { remarkStringifyOptionsCtx } from "@milkdown/kit/core";
 import { imageBlockSchema } from "@milkdown/kit/component/image-block";
 import { initReview, reviewEnded, reviewPlugin, reviewStarted, showReview, type ReviewOutcome } from "./review";
@@ -103,6 +103,22 @@ async function mountEditor(markdown: string) {
   });
   crepe.editor.config((ctx) => {
     ctx.update(remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: "-" as const }));
+    // Upstream writes empty paragraphs as `<br />` lines; save plain Markdown instead. Files that
+    // already contain those lines still open as empty paragraphs.
+    ctx.update(paragraphSchema.key, (prev) => (ctx) => {
+      const base = prev(ctx);
+      return {
+        ...base,
+        toMarkdown: {
+          match: base.toMarkdown.match,
+          runner: (state, node) => {
+            if (node.content.size > 0) return base.toMarkdown.runner(state, node);
+            state.openNode("paragraph");
+            state.closeNode();
+          },
+        },
+      };
+    });
     // Upstream stores the resize ratio in the alt text; keep the real alt text instead.
     ctx.update(imageBlockSchema.key, (prev) => (ctx) => {
       const base = prev(ctx);
