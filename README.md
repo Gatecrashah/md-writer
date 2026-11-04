@@ -13,6 +13,9 @@ Requires Swift (Xcode command line tools) and [bun](https://bun.sh).
     ./scripts/build-app.sh
     open "dist/MD Writer.app"
 
+The app icon is drawn in `Resources/AppIcon.svg`. After editing it, regenerate `Resources/AppIcon.icns` with
+`uv run scripts/make-icon.py` (needs `brew install cairo`).
+
 ## Features
 
 - WYSIWYG Markdown editing, light/dark following the system
