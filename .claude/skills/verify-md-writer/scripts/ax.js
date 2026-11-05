@@ -19,8 +19,10 @@
 //   raise <pid>                     activate this instance and raise its front window
 //
 // Targeting: the process is resolved to System Events' own unique id and used via processes.byId(), never by
-// name: the user's MD Writer and test instances share the name "MDWriter". `keys` refuses to type unless this
-// PID is frontmost at the moment of typing, because keystrokes go to whatever app is frontmost.
+// name: the user's MD Writer and test instances share the name "MDWriter". Children are reached by index
+// (`el.uiElements[i]`), never through `el.uiElements()`: the elements that call returns are addressed through
+// processes.byName("MDWriter"), which resolves to whichever instance System Events picks. `keys` refuses to type
+// unless this PID is frontmost at the moment of typing, because keystrokes go to whatever app is frontmost.
 
 ObjC.import("stdlib");
 
@@ -47,15 +49,18 @@ function run(argv) {
   const label = (el) =>
     [attr(el, "name"), attr(el, "description"), attr(el, "value")].filter((s) => s && s !== "missing value");
 
+  function children(el) {
+    let n = 0;
+    try {
+      n = el.uiElements.length;
+    } catch (e) {}
+    return Array.from({ length: n }, (_, i) => el.uiElements[i]);
+  }
   // System Events' `entire contents` does not descend into WKWebView content, so walk children explicitly.
   function walk(el, depth, max, visit) {
     if (visit(el, depth) === false) return false;
     if (depth >= max) return true;
-    let kids = [];
-    try {
-      kids = el.uiElements();
-    } catch (e) {}
-    for (const k of kids) if (walk(k, depth + 1, max, visit) === false) return false;
+    for (const k of children(el)) if (walk(k, depth + 1, max, visit) === false) return false;
     return true;
   }
   function find(role, text) {
@@ -115,7 +120,7 @@ function run(argv) {
     }
     case "sheet": {
       const s = sheet();
-      return s.uiElements().map((el) => `${attr(el, "role")} | ${attr(el, "value") || attr(el, "name")}`).join("\n");
+      return children(s).map((el) => `${attr(el, "role")} | ${attr(el, "value") || attr(el, "name")}`).join("\n");
     }
     case "sheet-select": {
       const popup = sheet().popUpButtons[Number(rest[0])];
