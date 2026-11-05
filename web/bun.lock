@@ -11,6 +11,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@milkdown/crepe@7.22.3": "patches/@milkdown%2Fcrepe@7.22.3.patch",
+  },
   "packages": {
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.29.11", "", {}, "sha512-snZbO7MEDOof+hvNa97EjEY7qD7h2kwvQr5AJC3ZhQudKW5dnej6k3kP9NQV88hJwaS8vDqRLFo9rivLEhle2g=="],
 

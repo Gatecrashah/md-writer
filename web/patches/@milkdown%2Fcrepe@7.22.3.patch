@@ -1,0 +1,64 @@
+diff --git a/lib/cjs/feature/block-edit/index.js b/lib/cjs/feature/block-edit/index.js
+index 69a885d5cae11059c5597d927c061e4bf04052ae..63f0c8dc6057c66b7547eb4ee4bb66b2379bce68 100644
+--- a/lib/cjs/feature/block-edit/index.js
++++ b/lib/cjs/feature/block-edit/index.js
+@@ -1121,8 +1121,9 @@ class BlockHandleView {
+       const active = __privateGet(this, _provider).active;
+       if (!active) return;
+       const $pos = active.$pos;
+-      const pos = $pos.pos + active.node.nodeSize;
+-      let tr = state$1.tr.insert(pos, commonmark.paragraphSchema.type(ctx).create());
++      const reuse = active.node.type.name === "paragraph" && active.node.content.size === 0;
++      const pos = reuse ? $pos.pos + 1 : $pos.pos + active.node.nodeSize;
++      let tr = reuse ? state$1.tr : state$1.tr.insert(pos, commonmark.paragraphSchema.type(ctx).create());
+       tr = tr.setSelection(state.TextSelection.near(tr.doc.resolve(pos)));
+       dispatch(tr.scrollIntoView());
+       __privateGet(this, _provider).hide();
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index 40e23cfda9624c524591047fb5112e7b47a1b8ee..7eb1462c494c0ff85ac3e9cbf16ebb79d25f3d44 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -2885,8 +2885,9 @@ class BlockHandleView {
+       const active = __privateGet$4(this, _provider$1).active;
+       if (!active) return;
+       const $pos = active.$pos;
+-      const pos = $pos.pos + active.node.nodeSize;
+-      let tr = state$1.tr.insert(pos, commonmark.paragraphSchema.type(ctx).create());
++      const reuse = active.node.type.name === "paragraph" && active.node.content.size === 0;
++      const pos = reuse ? $pos.pos + 1 : $pos.pos + active.node.nodeSize;
++      let tr = reuse ? state$1.tr : state$1.tr.insert(pos, commonmark.paragraphSchema.type(ctx).create());
+       tr = tr.setSelection(state.TextSelection.near(tr.doc.resolve(pos)));
+       dispatch(tr.scrollIntoView());
+       __privateGet$4(this, _provider$1).hide();
+diff --git a/lib/esm/feature/block-edit/index.js b/lib/esm/feature/block-edit/index.js
+index e10bae88c03d017f3dfd533c71ed388018e39669..e48b646ec2af6ed0ad57b5d4dc0ffe11fcacd2cf 100644
+--- a/lib/esm/feature/block-edit/index.js
++++ b/lib/esm/feature/block-edit/index.js
+@@ -1119,8 +1119,9 @@ class BlockHandleView {
+       const active = __privateGet(this, _provider).active;
+       if (!active) return;
+       const $pos = active.$pos;
+-      const pos = $pos.pos + active.node.nodeSize;
+-      let tr = state.tr.insert(pos, paragraphSchema.type(ctx).create());
++      const reuse = active.node.type.name === "paragraph" && active.node.content.size === 0;
++      const pos = reuse ? $pos.pos + 1 : $pos.pos + active.node.nodeSize;
++      let tr = reuse ? state.tr : state.tr.insert(pos, paragraphSchema.type(ctx).create());
+       tr = tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
+       dispatch(tr.scrollIntoView());
+       __privateGet(this, _provider).hide();
+diff --git a/lib/esm/index.js b/lib/esm/index.js
+index adae4fac966f7f2fa0d105ff7abbca27243aea5b..5b69bd520a0a8f95c3ea3a56c657638e4cbe0185 100644
+--- a/lib/esm/index.js
++++ b/lib/esm/index.js
+@@ -2883,8 +2883,9 @@ class BlockHandleView {
+       const active = __privateGet$4(this, _provider$1).active;
+       if (!active) return;
+       const $pos = active.$pos;
+-      const pos = $pos.pos + active.node.nodeSize;
+-      let tr = state.tr.insert(pos, paragraphSchema.type(ctx).create());
++      const reuse = active.node.type.name === "paragraph" && active.node.content.size === 0;
++      const pos = reuse ? $pos.pos + 1 : $pos.pos + active.node.nodeSize;
++      let tr = reuse ? state.tr : state.tr.insert(pos, paragraphSchema.type(ctx).create());
+       tr = tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
+       dispatch(tr.scrollIntoView());
+       __privateGet$4(this, _provider$1).hide();
